@@ -1,60 +1,70 @@
-"""CLI entry point for pipewatch metric reporting."""
-
+"""CLI entry point for pipewatch."""
 import json
-import sys
-from datetime import datetime
-
 import click
 
 from pipewatch.collector import MetricCollector
-from pipewatch.metrics import Metric, MetricThreshold
-
+from pipewatch.alerts import AlertManager
+from pipewatch.reporter import Reporter
+from pipewatch.metrics import MetricThreshold, MetricStatus
 
 collector = MetricCollector()
+alert_manager = AlertManager()
 
 
 @click.group()
 def cli():
     """pipewatch — monitor and alert on data pipeline health metrics."""
+    pass
 
 
 @cli.command()
 @click.argument("name")
 @click.argument("value", type=float)
-@click.option("--unit", default="", help="Unit of the metric (e.g. ms, rows, %)")
-@click.option("--warning", type=float, default=None, help="Warning threshold")
-@click.option("--critical", type=float, default=None, help="Critical threshold")
-@click.option("--tag", multiple=True, help="Tags in key=value format")
-def record(name, value, unit, warning, critical, tag):
-    """Record a metric value and evaluate its health status."""
-    tags = {}
-    for t in tag:
-        if "=" in t:
-            k, v = t.split("=", 1)
-            tags[k] = v
-
+@click.option("--warning", type=float, default=None)
+@click.option("--critical", type=float, default=None)
+def record(name, value, warning, critical):
+    """Record a metric value."""
     if warning is not None or critical is not None:
-        collector.register_threshold(name, MetricThreshold(warning=warning, critical=critical))
+        threshold = MetricThreshold(
+            warning_above=warning,
+            critical_above=critical,
+        )
+        collector.register_threshold(name, threshold)
 
-    metric = Metric(name=name, value=value, unit=unit, tags=tags)
-    result = collector.record(metric)
+    metric = collector.record(name, value)
+    click.echo(f"Recorded {name}={value} [{metric.status.value}]")
 
-    click.echo(json.dumps(result.to_dict(), indent=2))
-    if result.status.value == "critical":
-        sys.exit(2)
-    elif result.status.value == "warning":
-        sys.exit(1)
+    if metric.status in (MetricStatus.WARNING, MetricStatus.CRITICAL):
+        alert_manager.trigger(metric)
+        click.echo(f"Alert triggered: {metric.status.value.upper()} for '{name}'")
 
 
 @cli.command(name="list")
 def list_metrics():
-    """List the latest recorded value for all metrics."""
+    """List latest recorded metrics."""
     metrics = collector.all_latest()
     if not metrics:
         click.echo("No metrics recorded.")
         return
     for m in metrics:
-        click.echo(json.dumps(m.to_dict(), indent=2))
+        click.echo(f"{m.name}: {m.value} [{m.status.value}] at {m.timestamp}")
+
+
+@cli.command()
+@click.option("--json", "as_json", is_flag=True, default=False)
+def report(as_json):
+    """Generate a pipeline health report."""
+    reporter = Reporter(collector, alert_manager)
+    r = reporter.generate()
+    if as_json:
+        click.echo(json.dumps(r.to_dict(), indent=2))
+    else:
+        d = r.to_dict()
+        s = d["summary"]
+        click.echo(f"Report generated at {d['generated_at']}")
+        click.echo(f"  Total: {s['total']}  OK: {s['ok']}  Warning: {s['warning']}  Critical: {s['critical']}")
+        if d["alerts"]:
+            click.echo(f"  Active alerts: {len(d['alerts'])}")
 
 
 if __name__ == "__main__":
