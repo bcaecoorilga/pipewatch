@@ -62,6 +62,12 @@ alerts:
   slack_webhook: https://hooks.slack.com/your/webhook
 ```
 
+You can also specify a custom config file path using the `--config` flag:
+
+```bash
+pipewatch monitor --config /path/to/custom-config.yaml
+```
+
 ---
 
 ## License
