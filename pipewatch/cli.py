@@ -1,70 +1,63 @@
-"""CLI entry point for pipewatch."""
-import json
+"""CLI entry-point for pipewatch."""
+
 import click
-
 from pipewatch.collector import MetricCollector
-from pipewatch.alerts import AlertManager
 from pipewatch.reporter import Reporter
-from pipewatch.metrics import MetricThreshold, MetricStatus
+from pipewatch.exporter import export_report_json, export_report_text
 
-collector = MetricCollector()
-alert_manager = AlertManager()
+_collector = MetricCollector()
+_reporter = Reporter(_collector)
 
 
 @click.group()
 def cli():
     """pipewatch — monitor and alert on data pipeline health metrics."""
-    pass
 
 
 @cli.command()
 @click.argument("name")
 @click.argument("value", type=float)
-@click.option("--warning", type=float, default=None)
-@click.option("--critical", type=float, default=None)
-def record(name, value, warning, critical):
-    """Record a metric value."""
-    if warning is not None or critical is not None:
-        threshold = MetricThreshold(
-            warning_above=warning,
-            critical_above=critical,
-        )
-        collector.register_threshold(name, threshold)
-
-    metric = collector.record(name, value)
-    click.echo(f"Recorded {name}={value} [{metric.status.value}]")
-
-    if metric.status in (MetricStatus.WARNING, MetricStatus.CRITICAL):
-        alert_manager.trigger(metric)
-        click.echo(f"Alert triggered: {metric.status.value.upper()} for '{name}'")
+@click.option("--unit", default="", help="Unit of the metric value.")
+def record(name: str, value: float, unit: str):
+    """Record a metric VALUE for NAME."""
+    metric = _collector.record(name, value, unit=unit)
+    click.echo(f"Recorded {name}={value} [{unit}] status={metric.status.value}")
 
 
 @cli.command(name="list")
 def list_metrics():
-    """List latest recorded metrics."""
-    metrics = collector.all_latest()
+    """List all metrics with their latest values."""
+    metrics = _collector.all_latest()
     if not metrics:
-        click.echo("No metrics recorded.")
+        click.echo("No metrics recorded yet.")
         return
     for m in metrics:
-        click.echo(f"{m.name}: {m.value} [{m.status.value}] at {m.timestamp}")
+        d = m.to_dict()
+        click.echo(f"  {d['name']:30s} {d['value']:>10} {d.get('unit',''):10s} [{d.get('status','?')}]")
 
 
 @cli.command()
-@click.option("--json", "as_json", is_flag=True, default=False)
-def report(as_json):
-    """Generate a pipeline health report."""
-    reporter = Reporter(collector, alert_manager)
-    r = reporter.generate()
-    if as_json:
-        click.echo(json.dumps(r.to_dict(), indent=2))
+@click.option("--format", "fmt", type=click.Choice(["text", "json"]), default="text",
+              help="Output format.")
+def report(fmt: str):
+    """Generate a health report for all recorded metrics."""
+    pipeline_report = _reporter.generate()
+    if fmt == "json":
+        click.echo(export_report_json(pipeline_report))
     else:
-        d = r.to_dict()
-        s = d["summary"]
-        click.echo(f"Report generated at {d['generated_at']}")
-        click.echo(f"  Total: {s['total']}  OK: {s['ok']}  Warning: {s['warning']}  Critical: {s['critical']}")
-        if d["alerts"]:
-            click.echo(f"  Active alerts: {len(d['alerts'])}")
+        click.echo(export_report_text(pipeline_report))
+
+
+@cli.command()
+@click.argument("output", type=click.Path())
+@click.option("--format", "fmt", type=click.Choice(["text", "json"]), default="json")
+def export(output: str, fmt: str):
+    """Export the current report to OUTPUT file."""
+    pipeline_report = _reporter.generate()
+    content = export_report_json(pipeline_report) if fmt == "json" else export_report_text(pipeline_report)
+    with open(output, "w") as fh:
+        fh.write(content)
+    click.echo(f"Report exported to {output} ({fmt}).")
 
 
 if __name__ == "__main__":
