@@ -28,6 +28,13 @@ class ForecastResult:
 
 
 def _linear_fit(values: List[float]):
+    """Fit a simple least-squares linear regression to a sequence of values.
+
+    The x-coordinates are the implicit indices 0, 1, ..., n-1.
+
+    Returns:
+        A (slope, intercept) tuple.
+    """
     n = len(values)
     xs = list(range(n))
     mean_x = statistics.mean(xs)
@@ -41,6 +48,7 @@ def _linear_fit(values: List[float]):
 
 
 def _confidence(n: int) -> str:
+    """Return a confidence label based on the number of historical data points."""
     if n >= 20:
         return "high"
     if n >= 8:
@@ -49,6 +57,22 @@ def _confidence(n: int) -> str:
 
 
 def forecast(history: MetricHistory, name: str, steps: int = 3) -> Optional[ForecastResult]:
+    """Produce a linear forecast for a named metric.
+
+    Args:
+        history: A MetricHistory instance containing recorded metric values.
+        name: The name of the metric to forecast.
+        steps: Number of future steps to predict. Must be a positive integer.
+
+    Returns:
+        A ForecastResult, or None if there are fewer than 2 historical values.
+
+    Raises:
+        ValueError: If *steps* is not a positive integer.
+    """
+    if steps < 1:
+        raise ValueError(f"steps must be a positive integer, got {steps}")
+
     records = history.for_name(name)
     values = [r.value for r in records]
     if len(values) < 2:
