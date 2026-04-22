@@ -49,7 +49,12 @@ def _load_raw(path: str) -> List[dict]:
     if not os.path.exists(path):
         return []
     with open(path, "r") as f:
-        return json.load(f)
+        try:
+            return json.load(f)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Score history file at '{path}' contains invalid JSON: {exc}"
+            ) from exc
 
 
 def _save_raw(records: List[dict], path: str) -> None:
