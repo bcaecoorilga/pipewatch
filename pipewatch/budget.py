@@ -46,6 +46,8 @@ def check_budget(
 
     Only records whose *name* matches the rule name and whose timestamp falls
     within the rolling window are counted.
+
+    Returns ``None`` if the rule is invalid (non-positive limit or window).
     """
     import time
 
@@ -77,10 +79,30 @@ def scan_budgets(
     records: List[Metric],
     now: Optional[float] = None,
 ) -> Dict[str, BudgetResult]:
-    """Check all rules and return a mapping of rule name -> BudgetResult."""
+    """Check all rules and return a mapping of rule name -> BudgetResult.
+
+    Rules that fail ``is_valid()`` are silently skipped.
+    """
     results: Dict[str, BudgetResult] = {}
     for rule in rules:
         result = check_budget(rule, records, now=now)
         if result is not None:
             results[rule.name] = result
     return results
+
+
+def exceeded_budgets(
+    rules: List[BudgetRule],
+    records: List[Metric],
+    now: Optional[float] = None,
+) -> List[BudgetResult]:
+    """Return only the BudgetResults where the limit has been exceeded.
+
+    Convenience wrapper around :func:`scan_budgets` for callers that only
+    care about violations.
+    """
+    return [
+        result
+        for result in scan_budgets(rules, records, now=now).values()
+        if result.exceeded
+    ]
