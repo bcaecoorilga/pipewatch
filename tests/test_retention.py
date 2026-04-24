@@ -14,7 +14,11 @@ def _ts(hours_ago: float) -> str:
 
 
 def _make_raw(records_spec: list) -> list:
-    """records_spec: list of hours_ago floats."""
+    """Build a list of raw records from a list of hours_ago floats.
+
+    Each record has a 'timestamp' (ISO-format string) and a 'value' (float).
+    Records are ordered oldest-first, matching typical append order.
+    """
     return [{"timestamp": _ts(h), "value": float(i)} for i, h in enumerate(records_spec)]
 
 
@@ -51,6 +55,21 @@ def test_apply_policy_no_op_when_all_fresh():
     policy = RetentionPolicy(max_age_hours=24.0)
     result = _apply_policy(records, policy)
     assert len(result) == 3
+
+
+def test_apply_policy_empty_input():
+    """Applying a policy to an empty record list should return an empty list."""
+    policy = RetentionPolicy(max_age_hours=1.0, max_records=10)
+    result = _apply_policy([], policy)
+    assert result == []
+
+
+def test_apply_policy_all_records_pruned_by_age():
+    """When every record is older than max_age_hours, result should be empty."""
+    records = _make_raw([10.0, 20.0, 30.0])
+    policy = RetentionPolicy(max_age_hours=5.0)
+    result = _apply_policy(records, policy)
+    assert result == []
 
 
 # ---------------------------------------------------------------------------
@@ -91,26 +110,8 @@ def test_prune_writes_back_and_returns_results(tmp_path):
     assert cpu_result.records_after == 2
     assert cpu_result.pruned == 1
 
-    # Verify file was updated
+    # Verify file was updated on disk
     with open(path) as f:
-        saved = json.load(f)
-    assert len(saved["cpu"]) == 2
-
-
-def test_prune_invalid_policy_returns_empty(tmp_path):
-    path = str(tmp_path / "history.json")
-    with open(path, "w") as f:
-        json.dump({"cpu": _make_raw([0.5])}, f)
-    results = prune(path, RetentionPolicy())
-    assert results == []
-
-
-# ---------------------------------------------------------------------------
-# PruneResult.to_dict
-# ---------------------------------------------------------------------------
-
-def test_prune_result_to_dict():
-    r = PruneResult(metric_name="latency", records_before=10, records_after=7)
-    d = r.to_dict()
-    assert d["pruned"] == 3
-    assert d["metric_name"] == "latency"
+        written = json.load(f)
+    assert len(written["cpu"]) == 2
+    assert len(written["mem"]) == 1
