@@ -53,3 +53,15 @@ def test_score_all_critical_grade_f():
     data = json.loads(result.output)
     assert data["grade"] == "F"
     assert data["score"] == 0.0
+
+
+def test_score_all_ok_grade_a():
+    """All OK metrics should produce a perfect score and an 'A' grade."""
+    runner = CliRunner()
+    collector = _make_collector(MetricStatus.OK, MetricStatus.OK, MetricStatus.OK)
+    result = runner.invoke(health, ["score", "--format", "json"], obj={"collector": collector})
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["score"] == 100.0
+    assert data["grade"] == "A"
+    assert data["total"] == 3
