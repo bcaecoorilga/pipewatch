@@ -47,7 +47,15 @@ def detect_spike(
 
     Returns:
         SpikeResult or None if there is insufficient history.
+
+    Raises:
+        ValueError: If *threshold* is negative or *min_history* is less than 1.
     """
+    if threshold < 0:
+        raise ValueError(f"threshold must be non-negative, got {threshold}")
+    if min_history < 1:
+        raise ValueError(f"min_history must be at least 1, got {min_history}")
+
     records: List[Metric] = history.for_name(metric.name)
     # Exclude the current record if it was already appended
     prior = [r for r in records if r.timestamp != metric.timestamp]
