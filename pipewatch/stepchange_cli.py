@@ -28,6 +28,15 @@ def _format_result(r, fmt: str) -> str:
     )
 
 
+def _exit_code_for_results(results: list) -> int:
+    """Return exit code 1 if any step change was detected, 0 otherwise.
+
+    This allows callers (e.g. CI scripts) to branch on whether a step
+    change was found without having to parse the output.
+    """
+    return 1 if any(r.detected for r in results) else 0
+
+
 @stepchange_cli.command("check")
 @click.argument("metric_name")
 @click.option("--min-records", default=6, show_default=True, help="Minimum history records required.")
@@ -46,6 +55,7 @@ def check(metric_name: str, min_records: int, threshold: float, fmt: str) -> Non
         click.echo(f"{metric_name}: insufficient history (need {min_records} records)")
     else:
         click.echo(_format_result(result, fmt))
+        raise SystemExit(_exit_code_for_results([result]))
 
 
 @stepchange_cli.command("scan")
@@ -72,3 +82,4 @@ def scan(min_records: int, threshold: float, only_detected: bool, fmt: str) -> N
     else:
         for r in results:
             click.echo(_format_result(r, fmt))
+    raise SystemExit(_exit_code_for_results(results))
